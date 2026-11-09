@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1f6feb">
+  <title>Casa · Tareas</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <h1>Casa · Tareas</h1>
+    <span id="status" class="status">sin configurar</span>
+  </header>
+
+  <main>
+    <form id="add-form">
+      <input id="new-todo" type="text" placeholder="Nueva tarea…" autocomplete="off" required>
+      <button type="submit">Añadir</button>
+    </form>
+
+    <ul id="list"></ul>
+
+    <details id="settings">
+      <summary>Conexión MQTT</summary>
+      <form id="cfg-form">
+        <label>URL broker (wss)
+          <input id="cfg-url" type="text" placeholder="wss://xxxx.s1.eu.hivemq.cloud:8884/mqtt">
+        </label>
+        <label>Usuario
+          <input id="cfg-user" type="text" autocomplete="username">
+        </label>
+        <label>Contraseña
+          <input id="cfg-pass" type="password" autocomplete="current-password">
+        </label>
+        <button type="submit">Guardar y conectar</button>
+      </form>
+    </details>
+  </main>
+
+  <script src="https://unpkg.com/mqtt@5/dist/mqtt.min.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
