@@ -3,6 +3,7 @@ import { h, icon } from '../ui.js';
 const ITEMS = [
   ['compra', 'cart', 'Lista de la compra'],
   ['almacen', 'box', 'Almacenaje'],
+  ['mejoras', 'bulb', 'Mejoras de la app'],
   ['ajustes', 'sliders', 'Ajustes'],
 ];
 

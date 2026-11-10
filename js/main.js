@@ -10,6 +10,8 @@ import mas from './views/mas.js';
 import compra from './views/compra.js';
 import almacen from './views/almacen.js';
 import ajustes from './views/ajustes.js';
+import mejoras from './views/mejoras.js';
+import { initConflicts } from './components/conflicts.js';
 
 // Para añadir una sección: crear su vista y añadirla aquí (en TABS o dentro de "Más").
 const ROUTES = {
@@ -21,6 +23,7 @@ const ROUTES = {
   compra:     { title: 'Lista de la compra', view: compra,  parent: 'mas' },
   almacen:    { title: 'Almacenaje',         view: almacen, parent: 'mas' },
   ajustes:    { title: 'Ajustes',            view: ajustes, parent: 'mas' },
+  mejoras:    { title: 'Mejoras de la app',  view: mejoras, parent: 'mas' },
 };
 
 const TABS = [
@@ -40,6 +43,11 @@ const tabbar = document.getElementById('tabbar');
 backBtn.append(icon('back'));
 backBtn.addEventListener('click', () => { location.hash = '#/mas'; });
 statusBtn.addEventListener('click', () => { location.hash = '#/ajustes'; });
+
+// Aviso de versión nueva: franja bajo la cabecera; al tocarla se reinicia la app.
+const updateBtn = document.getElementById('update');
+updateBtn.addEventListener('click', () => location.reload());
+function markUpdatePending() { updateBtn.hidden = false; }
 
 const tabEls = TABS.map(([route, ic, label]) => {
   const a = h('a', { class: 'tab', href: '#/' + route }, icon(ic), h('span', {}, label));
@@ -75,8 +83,14 @@ function navigate() {
 
 window.addEventListener('hashchange', navigate);
 navigate();
+initConflicts();
 store.connect();
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js');
+  navigator.serviceWorker.addEventListener('message', (e) => {
+    if (e.data && e.data.type === 'update-ready') markUpdatePending();
+  });
+  // Por si el aviso llegó antes de que la app terminara de arrancar
+  if (window.caches) caches.match('/__update-pending').then((r) => { if (r) markUpdatePending(); });
 }

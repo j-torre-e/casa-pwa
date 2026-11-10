@@ -1,9 +1,17 @@
 // Capa de datos única. Las vistas NUNCA hablan con MQTT directamente: usan get/update/subscribe.
-// Cuando llegue la Raspberry o la cola sin conexión, solo cambia este archivo.
 //
 // Cada sección es un documento JSON publicado como retained en casa/<seccion>.
+// Sincronización:
+//  - Todo cambio se guarda primero en el móvil y queda marcado como "sin enviar".
+//  - Se envía en cuanto hay conexión y el broker lo confirma.
+//  - Al reconectar con cambios sin enviar, se fusiona lo del móvil con lo del broker
+//    (sync.js). Si los dos móviles cambiaron lo mismo, se avisa para que decidas.
+
+import { merge3, eq } from './sync.js';
 
 const PREFIX = 'casa/';
+const WAIT_RETAINED_MS = 3000;  // espera a recibir lo del broker antes de enviar lo pendiente
+const RECONNECT_MS = 4000;
 
 const DEFAULTS = {
   batch: [],          // [{id, name, qty, desc}]
@@ -11,6 +19,7 @@ const DEFAULTS = {
   tareas: [],         // [{id, title, done, date, notes}]
   calendario: [],     // [{id, title, type, start, end, notes}]
   almacen: [],        // [{id, name, qty, desc, roomId, locationId}]
+  mejoras: [],        // [{id, name, desc, section, newSection, done, doneAt, created}]
   config: { rooms: [] },               // rooms: [{id, name, locations: [{id, name}]}]
   mapa: { plan: null, devices: [] },   // futuro: devices [{id, name, kind, roomId, x, y, topic}]
 };
@@ -20,37 +29,39 @@ export const SECTIONS = Object.keys(DEFAULTS);
 const clone = (v) => JSON.parse(JSON.stringify(v));
 export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
-// ---------- Estado local (caché en el móvil) ----------
-const state = {};
+const load = (key, fallback) => {
+  try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; } catch { return fallback; }
+};
+const save = (key, v) => { try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* sin espacio */ } };
+
+// ---------- Estado en el móvil ----------
+const state = {};      // lo que ve el usuario
+const base = {};       // lo último que sabemos que tiene el broker
 const listeners = {};
+const dirty = load('casa:dirty', {});   // secciones con cambios sin enviar
 for (const s of SECTIONS) {
   listeners[s] = new Set();
-  try {
-    const raw = localStorage.getItem('casa:' + s);
-    state[s] = raw ? JSON.parse(raw) : clone(DEFAULTS[s]);
-  } catch {
-    state[s] = clone(DEFAULTS[s]);
-  }
+  state[s] = load('casa:' + s, clone(DEFAULTS[s]));
+  base[s] = load('casa:base:' + s, undefined);
 }
 
-function persist(s) {
-  try { localStorage.setItem('casa:' + s, JSON.stringify(state[s])); } catch { /* sin espacio */ }
+const persist = (s) => save('casa:' + s, state[s]);
+const saveBase = (s) => save('casa:base:' + s, base[s]);
+function setDirty(s, v) {
+  dirty[s] = v;
+  save('casa:dirty', dirty);
+  paintStatus();
 }
-function emit(s) {
-  listeners[s].forEach((fn) => fn(state[s]));
-}
+const emit = (s) => listeners[s].forEach((fn) => fn(state[s]));
 
-export function get(s) {
-  return state[s];
-}
+export function get(s) { return state[s]; }
 
 export function set(s, value) {
   state[s] = value;
   persist(s);
   emit(s);
-  if (client && client.connected) {
-    client.publish(PREFIX + s, JSON.stringify(value), { qos: 1, retain: true });
-  }
+  setDirty(s, true);
+  send(s);
 }
 
 // Modifica una copia y la guarda. fn puede mutar la copia o devolver un valor nuevo.
@@ -65,11 +76,11 @@ export function subscribe(s, fn) {
   return () => listeners[s].delete(fn);
 }
 
-// Atajo: lista de habitaciones (siempre un array)
 export const rooms = () => (state.config && state.config.rooms) || [];
 
 // ---------- Estado de conexión ----------
-let status = { text: 'sin configurar', ok: false };
+let raw = { text: 'sin configurar', ok: false };
+let status = raw;
 const statusListeners = new Set();
 
 export function onStatus(fn) {
@@ -77,63 +88,160 @@ export function onStatus(fn) {
   fn(status);
   return () => statusListeners.delete(fn);
 }
-function setStatus(text, ok = false) {
-  status = { text, ok };
+function paintStatus() {
+  const pending = Object.values(dirty).some(Boolean);
+  status = { text: raw.text + (pending && !raw.ok ? ' · cambios sin enviar' : ''), ok: raw.ok };
   statusListeners.forEach((fn) => fn(status));
+}
+function setStatus(text, ok = false) {
+  raw = { text, ok };
+  paintStatus();
+}
+
+// ---------- Conflictos ----------
+const conflicts = {};                 // seccion -> { remote } mientras el usuario decide
+const conflictListeners = new Set();
+const pendingConflictEvents = [];
+
+export function onConflict(fn) {
+  conflictListeners.add(fn);
+  pendingConflictEvents.splice(0).forEach(fn);
+}
+function raiseConflict(s, list) {
+  const ev = { section: s, conflicts: list };
+  if (conflictListeners.size) conflictListeners.forEach((fn) => fn(ev));
+  else pendingConflictEvents.push(ev);
+}
+
+// choices: { [key]: 'local' | 'remote' }
+export function resolve(s, choices) {
+  const ctx = conflicts[s];
+  if (!ctx) return;
+  const { value, conflicts: still } = merge3(base[s], state[s], ctx.remote, choices);
+  if (still.length) { raiseConflict(s, still); return; } // el broker cambió mientras decidías
+  delete conflicts[s];
+  applyMerged(s, value, ctx.remote);
+}
+
+function applyMerged(s, value, remote) {
+  base[s] = remote;
+  saveBase(s);
+  state[s] = value;
+  persist(s);
+  emit(s);
+  if (eq(value, remote)) setDirty(s, false);
+  else { setDirty(s, true); send(s); }
 }
 
 // ---------- Configuración del broker (solo en este móvil) ----------
 export function getConn() {
-  try {
-    const c = localStorage.getItem('casa:conn') || localStorage.getItem('mqttCfg'); // mqttCfg = prueba anterior
-    return c ? JSON.parse(c) : {};
-  } catch {
-    return {};
-  }
+  return load('casa:conn', null) || load('mqttCfg', {}); // mqttCfg = prueba anterior
 }
 export function setConn(c) {
-  localStorage.setItem('casa:conn', JSON.stringify(c));
+  save('casa:conn', c);
   connect();
 }
 
 // ---------- MQTT ----------
 let client = null;
 let lastError = '';
+let reconnectTimer = null;
+let waitTimer = null;
+const awaiting = new Set();   // secciones de las que aún no ha llegado lo del broker tras conectar
+const lastSent = {};          // último JSON enviado por sección (para reconocer el eco)
+
+function send(s) {
+  if (!client || !client.connected || conflicts[s] || awaiting.has(s) || !dirty[s]) return;
+  const json = JSON.stringify(state[s]);
+  lastSent[s] = json;
+  client.publish(PREFIX + s, json, { qos: 1, retain: true }, (err) => {
+    if (err) return;              // sigue "sin enviar"; se reintentará al reconectar
+    base[s] = JSON.parse(json);
+    saveBase(s);
+    if (JSON.stringify(state[s]) === json) setDirty(s, false);
+  });
+}
+
+function onMessage(topic, payload) {
+  const s = topic.slice(PREFIX.length);
+  if (!SECTIONS.includes(s)) return;
+  const json = payload.toString();
+  let remote;
+  try { remote = JSON.parse(json); } catch { return; }
+  awaiting.delete(s);
+
+  if (json === lastSent[s]) {     // el broker tiene justo lo último que enviamos
+    base[s] = remote;
+    saveBase(s);
+    if (JSON.stringify(state[s]) === json) setDirty(s, false);
+    else send(s);                 // lo cambiado después es solo nuestro: se envía
+    return;
+  }
+  if (conflicts[s]) { conflicts[s].remote = remote; return; }
+
+  if (!dirty[s]) {                // sin cambios locales: manda el broker
+    state[s] = remote; persist(s);
+    base[s] = remote; saveBase(s);
+    emit(s);
+    return;
+  }
+
+  const { value, conflicts: list } = merge3(base[s], state[s], remote);
+  if (list.length) {
+    conflicts[s] = { remote };
+    raiseConflict(s, list);
+    return;
+  }
+  applyMerged(s, value, remote);
+}
+
+function scheduleReconnect(delay = RECONNECT_MS) {
+  clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(connect, delay);
+}
 
 export function connect() {
+  clearTimeout(reconnectTimer);
   const c = getConn();
   if (!c.url) { setStatus('sin configurar'); return; }
   if (typeof mqtt === 'undefined') { setStatus('sin red'); return; }
-  if (client) client.end(true);
+  if (client) { client.removeAllListeners(); client.end(true); }
 
+  // Reconexión manual con un cliente nuevo cada vez: así no se reenvían envíos antiguos
+  // al volver la conexión; lo pendiente pasa siempre por la fusión.
   lastError = '';
   setStatus('conectando…');
-  client = mqtt.connect(c.url, {
+  const cl = mqtt.connect(c.url, {
     username: c.user,
     password: c.pass,
     clientId: 'casa-' + Math.random().toString(16).slice(2, 10),
-    reconnectPeriod: 4000,
+    reconnectPeriod: 0,
     connectTimeout: 10000,
     clean: true,
   });
+  client = cl;
 
-  client.on('connect', () => {
+  cl.on('connect', () => {
     lastError = '';
     setStatus('conectado', true);
-    client.subscribe(PREFIX + '+', { qos: 1 });
+    SECTIONS.forEach((s) => awaiting.add(s));
+    cl.subscribe(PREFIX + '+', { qos: 1 });
+    clearTimeout(waitTimer);
+    waitTimer = setTimeout(() => {            // secciones que el broker aún no tiene
+      [...awaiting].forEach((s) => { awaiting.delete(s); send(s); });
+    }, WAIT_RETAINED_MS);
   });
-  // El error se mantiene visible hasta que la conexión se recupere.
-  client.on('error', (err) => { lastError = err.message; setStatus('error: ' + lastError); });
-  client.on('reconnect', () => setStatus(lastError ? 'error: ' + lastError : 'reconectando…'));
-  client.on('close', () => setStatus(lastError ? 'error: ' + lastError : 'desconectado'));
-
-  client.on('message', (topic, payload) => {
-    const s = topic.slice(PREFIX.length);
-    if (!SECTIONS.includes(s)) return;
-    try {
-      state[s] = JSON.parse(payload.toString());
-      persist(s);
-      emit(s);
-    } catch { /* mensaje no válido: se ignora */ }
+  cl.on('message', onMessage);
+  cl.on('error', (err) => { lastError = err.message; setStatus('error: ' + lastError); });
+  cl.on('close', () => {
+    if (client !== cl) return;
+    awaiting.clear();
+    setStatus(lastError ? 'error: ' + lastError : 'desconectado');
+    scheduleReconnect();
   });
 }
+
+// Reconectar en cuanto vuelve la red o la app pasa a primer plano.
+const reconnectNow = () => { if (!client || !client.connected) scheduleReconnect(0); };
+window.addEventListener('online', reconnectNow);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) reconnectNow(); });

@@ -37,6 +37,7 @@ const ICONS = {
   x: '<path d="M6 6l12 12M18 6L6 18"/>',
   trash: '<path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/>',
   edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/>',
+  bulb: '<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/>',
 };
 
 export function icon(name) {
@@ -53,11 +54,12 @@ export const empty = (text) => h('p', { class: 'empty' }, text);
 export const sectionTitle = (text) => h('h3', { class: 'section-title' }, text);
 
 // Hoja inferior (bottom sheet) para editar. onSave puede devolver false para no cerrar.
-export function sheet(title, body, { onSave, onDelete, saveLabel = 'Guardar' } = {}) {
+export function sheet(title, body, { onSave, onDelete, onClose, saveLabel = 'Guardar', dismissable = true } = {}) {
   const dlg = h('dialog', { class: 'sheet' });
   const close = () => dlg.close();
-  dlg.addEventListener('close', () => dlg.remove());
-  dlg.addEventListener('click', (e) => { if (e.target === dlg) close(); });
+  dlg.addEventListener('close', () => { dlg.remove(); if (onClose) onClose(); });
+  dlg.addEventListener('click', (e) => { if (dismissable && e.target === dlg) close(); });
+  if (!dismissable) dlg.addEventListener('cancel', (e) => e.preventDefault());
 
   const form = h('form', {
     tabindex: '-1',
@@ -69,7 +71,7 @@ export function sheet(title, body, { onSave, onDelete, saveLabel = 'Guardar' } =
   },
     h('header', { class: 'sheet-head' },
       h('h2', {}, title),
-      h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Cerrar', onclick: close }, icon('x'))),
+      dismissable && h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Cerrar', onclick: close }, icon('x'))),
     h('div', { class: 'sheet-body' }, body),
     h('footer', { class: 'sheet-foot' },
       onDelete && h('button', {
