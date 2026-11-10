@@ -9,7 +9,7 @@ const MARK = '/__update-pending';
 const ASSETS = [
   '/', '/manifest.json', '/css/app.css',
   '/js/vendor/mqtt.min.js',
-  '/js/main.js', '/js/store.js', '/js/sync.js', '/js/ui.js',
+  '/js/main.js', '/js/store.js', '/js/sync.js', '/js/ui.js', '/js/version.js',
   '/js/components/cardlist.js', '/js/components/conflicts.js',
   '/js/views/casa.js', '/js/views/tareas.js', '/js/views/batch.js', '/js/views/calendario.js',
   '/js/views/mas.js', '/js/views/compra.js', '/js/views/almacen.js', '/js/views/ajustes.js',

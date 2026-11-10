@@ -2,8 +2,7 @@
 
 import * as store from '../store.js';
 import { h, icon, field, empty, sectionTitle } from '../ui.js';
-
-const VERSION = '1.0.0';
+import { VERSION } from '../version.js';
 
 function connectionForm() {
   const c = store.getConn();
