@@ -2,46 +2,28 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#1f6feb">
-  <title>Casa · Tareas</title>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Casa">
+  <title>Casa</title>
   <link rel="manifest" href="/manifest.json">
-  <link rel="icon" href="/icons/icon-192.png">
-  <link rel="apple-touch-icon" href="/icons/icon-192.png">
-  <link rel="stylesheet" href="/style.css">
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icons/icon-180.png">
+  <link rel="stylesheet" href="/css/app.css">
 </head>
 <body>
-  <header>
-    <h1>Casa · Tareas</h1>
-    <span id="status" class="status">sin configurar</span>
+  <header class="app-header">
+    <button id="back" class="icon-btn" type="button" aria-label="Volver" hidden></button>
+    <h1 id="title">Casa</h1>
+    <button id="status" class="status" type="button" aria-label="Estado de la conexión">sin configurar</button>
   </header>
 
-  <main>
-    <form id="add-form">
-      <input id="new-todo" type="text" placeholder="Nueva tarea…" autocomplete="off" required>
-      <button type="submit">Añadir</button>
-    </form>
+  <main id="main"></main>
 
-    <ul id="list"></ul>
-
-    <details id="settings">
-      <summary>Conexión MQTT</summary>
-      <form id="cfg-form">
-        <label>URL broker (wss)
-          <input id="cfg-url" type="text" placeholder="wss://xxxx.s1.eu.hivemq.cloud:8884/mqtt">
-        </label>
-        <label>Usuario
-          <input id="cfg-user" type="text" autocomplete="username">
-        </label>
-        <label>Contraseña
-          <input id="cfg-pass" type="password" autocomplete="current-password">
-        </label>
-        <button type="submit">Guardar y conectar</button>
-      </form>
-    </details>
-  </main>
+  <nav id="tabbar" class="tabbar" aria-label="Secciones"></nav>
 
   <script src="https://unpkg.com/mqtt@5/dist/mqtt.min.js"></script>
-  <script src="/app.js"></script>
+  <script type="module" src="/js/main.js"></script>
 </body>
 </html>
