@@ -1,12 +1,19 @@
-// Service worker "network-first": siempre intenta lo último desplegado en Vercel
-// y solo usa la caché si no hay red. Si añades archivos, añádelos a ASSETS y sube la versión.
+// Service worker "caché primero": la app se abre al instante desde el móvil y,
+// en segundo plano, descarga lo último de Vercel. Si algo ha cambiado, avisa a la
+// app ("Pendiente de actualizar") y la versión nueva se ve al reiniciar.
+// No hace falta cambiar nada aquí en cada push; solo si añades archivos nuevos (ASSETS).
 
-const CACHE = 'casa-v2';
+const CACHE = 'casa-v3';
+const SHELL = '/';
+const MARK = '/__update-pending';
 const ASSETS = [
-  '/', '/index.html', '/manifest.json', '/css/app.css',
-  '/js/main.js', '/js/store.js', '/js/ui.js', '/js/components/cardlist.js',
+  '/', '/manifest.json', '/css/app.css',
+  '/js/vendor/mqtt.min.js',
+  '/js/main.js', '/js/store.js', '/js/sync.js', '/js/ui.js',
+  '/js/components/cardlist.js', '/js/components/conflicts.js',
   '/js/views/casa.js', '/js/views/tareas.js', '/js/views/batch.js', '/js/views/calendario.js',
   '/js/views/mas.js', '/js/views/compra.js', '/js/views/almacen.js', '/js/views/ajustes.js',
+  '/js/views/mejoras.js',
   '/icons/icon.svg', '/icons/icon-180.png', '/icons/icon-192.png', '/icons/icon-512.png',
 ];
 
@@ -22,16 +29,44 @@ self.addEventListener('activate', (e) => {
   self.clients.claim();
 });
 
+async function differs(a, b) {
+  const ea = a.headers.get('etag');
+  const eb = b.headers.get('etag');
+  if (ea && eb) return ea !== eb;
+  return (await a.text()) !== (await b.text());
+}
+
+async function notifyUpdate(cache) {
+  await cache.put(MARK, new Response('1'));
+  const clients = await self.clients.matchAll({ includeUncontrolled: true });
+  clients.forEach((c) => c.postMessage({ type: 'update-ready' }));
+}
+
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
-  e.respondWith(
-    fetch(req)
-      .then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(req, copy));
-        return res;
-      })
-      .catch(() => caches.match(req, { ignoreSearch: true }).then((r) => r || caches.match('/index.html')))
-  );
+
+  const isNav = req.mode === 'navigate';
+  const key = isNav ? SHELL : req;
+
+  e.respondWith((async () => {
+    const cache = await caches.open(CACHE);
+    if (isNav) await cache.delete(MARK); // al reiniciar la app se limpia el aviso
+    const cached = await cache.match(key, { ignoreSearch: true });
+    const cachedCopy = cached ? cached.clone() : null;
+
+    const network = fetch(req).then(async (res) => {
+      if (res.ok && res.type === 'basic') {
+        if (cachedCopy && await differs(cachedCopy, res.clone())) await notifyUpdate(cache);
+        await cache.put(key, res.clone());
+      }
+      return res;
+    }).catch(() => null);
+
+    if (cached) {
+      e.waitUntil(network);
+      return cached;
+    }
+    return (await network) || (await cache.match(SHELL)) || Response.error();
+  })());
 });
