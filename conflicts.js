@@ -8,12 +8,15 @@ import { eq } from '../sync.js';
 const SECTION_LABEL = {
   batch: 'Batch cooking', compra: 'Lista de la compra', tareas: 'Tareas', calendario: 'Calendario',
   almacen: 'Almacenaje', mejoras: 'Mejoras de la app', config: 'Ajustes', mapa: 'Mapa',
+  semanal: 'Menú semanal',
 };
+const HIDDEN_KEYS = new Set(['id', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt']);
 const FIELD_LABEL = {
   name: 'Nombre', title: 'Título', qty: 'Cantidad', desc: 'Descripción', notes: 'Notas',
   done: 'Hecha', date: 'Fecha', start: 'Desde', end: 'Hasta', type: 'Tipo',
   roomId: 'Habitación', locationId: 'Ubicación', section: 'Sección', newSection: 'Nueva sección',
   locations: 'Ubicaciones', doneAt: 'Hecha el', created: 'Creada', value: 'Valor',
+  status: 'Estado', blockedReason: 'Motivo del bloqueo', comida: 'Comida', cena: 'Cena',
 };
 
 function fmt(key, v) {
@@ -37,9 +40,9 @@ function diffTable(c) {
   if (!l || !r) {
     rows = [['Estado', l ? 'Existe' : 'Borrado', r ? 'Existe' : 'Borrado']];
     const it = l || r;
-    Object.keys(it).filter((k) => k !== 'id').forEach((k) => rows.push([FIELD_LABEL[k] || k, l ? fmt(k, l[k]) : '—', r ? fmt(k, r[k]) : '—']));
+    Object.keys(it).filter((k) => !HIDDEN_KEYS.has(k)).forEach((k) => rows.push([FIELD_LABEL[k] || k, l ? fmt(k, l[k]) : '—', r ? fmt(k, r[k]) : '—']));
   } else {
-    const keys = [...new Set([...Object.keys(l), ...Object.keys(r)])].filter((k) => k !== 'id' && !eq(l[k], r[k]));
+    const keys = [...new Set([...Object.keys(l), ...Object.keys(r)])].filter((k) => !HIDDEN_KEYS.has(k) && !eq(l[k], r[k]));
     rows = keys.map((k) => [FIELD_LABEL[k] || k, fmt(k, l[k]), fmt(k, r[k])]);
   }
   return h('table', { class: 'diff-table' },
@@ -48,7 +51,8 @@ function diffTable(c) {
 }
 
 function conflictBlock(c, i) {
-  const name = itemName(c.local) || itemName(c.remote) || FIELD_LABEL[c.key] || c.key;
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(c.key) ? new Date(c.key + 'T12:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'short' }) : '';
+  const name = itemName(c.local) || itemName(c.remote) || day || FIELD_LABEL[c.key] || c.key;
   const state = (it) => (it ? 'Modificado' : 'Borrado');
   const radio = (value) => h('input', { type: 'radio', name: 'conflict-' + i, value, required: true });
   const local = radio('local');

@@ -3,7 +3,7 @@
 // Con cantidad 0 la tarjeta pasa a gris y baja al final (sirve de "ideas" / "habituales").
 
 import * as store from '../store.js';
-import { h, icon, sheet, field, empty } from '../ui.js';
+import { h, icon, sheet, field, empty, auditLine } from '../ui.js';
 
 export function cardList(root, opts) {
   const {
@@ -72,7 +72,7 @@ export function cardList(root, opts) {
     const desc = h('textarea', { rows: '3', placeholder: 'Descripción breve' }, it.desc || '');
     const extra = extraFields ? extraFields(it) : null;
 
-    sheet(it.name, [field('Nombre', name), field(qtyLabel, qty), extra && extra.nodes, field('Descripción', desc)], {
+    sheet(it.name, [field('Nombre', name), field(qtyLabel, qty), extra && extra.nodes, field('Descripción', desc), auditLine(it)], {
       onSave: () => store.update(section, (list) => {
         const x = list.find((i) => i.id === id);
         if (!x) return;

@@ -8,7 +8,17 @@ const sortKeys = (_k, v) => (v && typeof v === 'object' && !Array.isArray(v)
 export const stable = (v) => (v === undefined ? 'undefined' : JSON.stringify(v, sortKeys));
 export const eq = (a, b) => stable(a) === stable(b);
 
-const isItemList = (v) => Array.isArray(v) && v.every((i) => i && typeof i === 'object' && 'id' in i);
+// Para comparar elementos se ignora quién/cuándo modificó: dos cambios iguales no son conflicto.
+const AUDIT_KEYS = ['updatedBy', 'updatedAt'];
+const strip = (i) => {
+  if (!i || typeof i !== 'object') return i;
+  const c = { ...i };
+  AUDIT_KEYS.forEach((k) => delete c[k]);
+  return c;
+};
+export const eqItem = (a, b) => eq(strip(a), strip(b));
+
+const isItemList =(v) => Array.isArray(v) && v.every((i) => i && typeof i === 'object' && 'id' in i);
 
 function mergeList(b, l, r, choices, prefix, conflicts) {
   const byId = (arr) => new Map((arr || []).map((i) => [i.id, i]));
@@ -21,8 +31,8 @@ function mergeList(b, l, r, choices, prefix, conflicts) {
     const bi = B.get(id); const li = L.get(id); const ri = R.get(id);
     const key = prefix + id;
     let pick;
-    if (eq(li, bi)) pick = ri;                   // solo cambió el otro móvil (o nadie)
-    else if (eq(ri, bi) || eq(li, ri)) pick = li; // solo cambió este móvil (o igual en ambos)
+    if (eqItem(li, bi)) pick = ri;                       // solo cambió el otro móvil (o nadie)
+    else if (eqItem(ri, bi) || eqItem(li, ri)) pick = li; // solo cambió este móvil (o igual en ambos)
     else if (choices[key]) pick = choices[key] === 'local' ? li : ri;
     else { conflicts.push({ key, local: li, remote: ri }); pick = li; }
     if (pick) out.push(pick);

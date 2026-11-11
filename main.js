@@ -12,6 +12,8 @@ import almacen from './views/almacen.js';
 import ajustes from './views/ajustes.js';
 import mejoras from './views/mejoras.js';
 import menu, { autoCheckMenu } from './views/menu.js';
+import semanal from './views/semanal.js';
+import { sheet, field } from './ui.js';
 import { initConflicts } from './components/conflicts.js';
 
 // Para añadir una sección: crear su vista y añadirla aquí (en TABS o dentro de "Más").
@@ -26,6 +28,7 @@ const ROUTES = {
   ajustes:    { title: 'Ajustes',            view: ajustes, parent: 'mas' },
   mejoras:    { title: 'Mejoras de la app',  view: mejoras, parent: 'mas' },
   menu:       { title: 'Menú Trueba',        view: menu,    parent: 'mas' },
+  semanal:    { title: 'Menú semanal',       view: semanal, parent: 'mas' },
 };
 
 const TABS = [
@@ -87,6 +90,15 @@ window.addEventListener('hashchange', navigate);
 navigate();
 initConflicts();
 store.connect();
+
+// Primer arranque: pedir el nombre de quien usa este móvil (para la autoría de las tarjetas).
+if (!store.getUserName()) {
+  const input = h('input', { type: 'text', required: true, placeholder: 'Ej. Juan', autocomplete: 'given-name' });
+  sheet('¿Quién usa este móvil?', [
+    h('p', { class: 'hint' }, 'Tu nombre aparecerá en las tarjetas que crees o modifiques. Puedes cambiarlo en Ajustes.'),
+    field('Tu nombre', input),
+  ], { dismissable: false, saveLabel: 'Guardar', onSave: () => store.setUserName(input.value) });
+}
 
 // Menú Trueba: comprobación automática en segundo plano (respeta el flag del mes).
 setTimeout(autoCheckMenu, 3000);

@@ -1,7 +1,7 @@
 // Tareas. Las que tienen fecha aparecen también en el calendario.
 
 import * as store from '../store.js';
-import { h, icon, sheet, field, empty, fmtDate, today } from '../ui.js';
+import { h, icon, sheet, field, empty, fmtDate, today, auditLine } from '../ui.js';
 
 export function toggleTask(id, done) {
   store.update('tareas', (list) => {
@@ -21,6 +21,7 @@ export function taskSheet(id) {
     field('Título', title),
     field('Fecha (opcional · aparece en el calendario)', date),
     field('Notas', notes),
+    auditLine(t),
   ], {
     onSave: () => store.update('tareas', (list) => {
       const x = list.find((i) => i.id === id);

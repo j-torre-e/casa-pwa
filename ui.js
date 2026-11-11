@@ -37,6 +37,7 @@ const ICONS = {
   x: '<path d="M6 6l12 12M18 6L6 18"/>',
   trash: '<path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/>',
   edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/>',
+  plate: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/>',
   utensils: '<path d="M7 3v8M5 3v5a2 2 0 0 0 4 0V3M7 11v10M17 21V3c-2 0-3.5 2.5-3.5 6s1.5 4 3.5 4"/>',
   bulb:'<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/>',
 };
@@ -105,3 +106,18 @@ export function fmtDate(s, long = false) {
   return parseYmd(s).toLocaleDateString('es-ES', opts);
 }
 export const today = () => ymd(new Date());
+
+// Línea de autoría al pie de una tarjeta abierta (gris y cursiva).
+export function auditLine(item) {
+  if (!item) return null;
+  const when = (iso, withTime) => {
+    const d = new Date(iso);
+    if (isNaN(d)) return '';
+    const day = d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+    return withTime ? `${day} ${d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}` : day;
+  };
+  const parts = [];
+  if (item.createdBy) parts.push(`Creado por ${item.createdBy}${item.createdAt ? ' el ' + when(item.createdAt) : ''}`);
+  if (item.updatedBy) parts.push(`Última modificación: ${item.updatedBy}${item.updatedAt ? ', ' + when(item.updatedAt, true) : ''}`);
+  return parts.length ? h('p', { class: 'audit' }, parts.join(' · ')) : null;
+}
