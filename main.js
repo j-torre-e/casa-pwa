@@ -11,6 +11,7 @@ import compra from './views/compra.js';
 import almacen from './views/almacen.js';
 import ajustes from './views/ajustes.js';
 import mejoras from './views/mejoras.js';
+import menu, { autoCheckMenu } from './views/menu.js';
 import { initConflicts } from './components/conflicts.js';
 
 // Para añadir una sección: crear su vista y añadirla aquí (en TABS o dentro de "Más").
@@ -24,6 +25,7 @@ const ROUTES = {
   almacen:    { title: 'Almacenaje',         view: almacen, parent: 'mas' },
   ajustes:    { title: 'Ajustes',            view: ajustes, parent: 'mas' },
   mejoras:    { title: 'Mejoras de la app',  view: mejoras, parent: 'mas' },
+  menu:       { title: 'Menú Trueba',        view: menu,    parent: 'mas' },
 };
 
 const TABS = [
@@ -85,6 +87,10 @@ window.addEventListener('hashchange', navigate);
 navigate();
 initConflicts();
 store.connect();
+
+// Menú Trueba: comprobación automática en segundo plano (respeta el flag del mes).
+setTimeout(autoCheckMenu, 3000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) autoCheckMenu(); });
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js');

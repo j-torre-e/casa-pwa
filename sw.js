@@ -13,7 +13,7 @@ const ASSETS = [
   '/js/components/cardlist.js', '/js/components/conflicts.js',
   '/js/views/casa.js', '/js/views/tareas.js', '/js/views/batch.js', '/js/views/calendario.js',
   '/js/views/mas.js', '/js/views/compra.js', '/js/views/almacen.js', '/js/views/ajustes.js',
-  '/js/views/mejoras.js',
+  '/js/views/mejoras.js', '/js/views/menu.js',
   '/icons/icon.svg', '/icons/icon-180.png', '/icons/icon-192.png', '/icons/icon-512.png',
 ];
 
@@ -44,7 +44,9 @@ async function notifyUpdate(cache) {
 
 self.addEventListener('fetch', (e) => {
   const req = e.request;
-  if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
+  const url = new URL(req.url);
+  if (req.method !== 'GET' || url.origin !== location.origin) return;
+  if (url.pathname.startsWith('/api/')) return; // funciones de Vercel: siempre a la red
 
   const isNav = req.mode === 'navigate';
   const key = isNav ? SHELL : req;

@@ -2,4 +2,4 @@
 //  - MAJOR: cambios importantes (solo con confirmación)
 //  - MINOR: cada funcionalidad nueva
 //  - BUGS:  correcciones
-export const VERSION = '1.2.1';
+export const VERSION = '1.4.0';
