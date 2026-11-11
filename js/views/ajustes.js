@@ -75,6 +75,20 @@ function roomCard(r) {
     }, locInput, h('button', { class: 'icon-btn', type: 'submit', 'aria-label': 'Añadir ubicación' }, icon('plus'))));
 }
 
+function nameForm() {
+  const input = h('input', { type: 'text', value: store.getUserName(), placeholder: 'Ej. Juan', autocomplete: 'given-name' });
+  const saved = h('p', { class: 'hint' }, 'Aparece en las tarjetas como quién las crea o modifica. Se guarda solo en este móvil.');
+  return h('form', {
+    class: 'panel',
+    onsubmit: (e) => {
+      e.preventDefault();
+      if (!input.value.trim()) return;
+      store.setUserName(input.value);
+      saved.textContent = 'Guardado: ' + store.getUserName();
+    },
+  }, field('Nombre de quien usa este móvil', input), h('button', { class: 'btn primary block', type: 'submit' }, 'Guardar nombre'), saved);
+}
+
 export default function render(root) {
   const conn = connectionForm();
 
@@ -97,6 +111,8 @@ export default function render(root) {
   };
 
   root.append(h('div', { class: 'view' },
+    sectionTitle('Tu nombre'),
+    nameForm(),
     sectionTitle('Conexión'),
     conn.form,
     sectionTitle('Habitaciones y ubicaciones'),

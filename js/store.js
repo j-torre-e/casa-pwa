@@ -7,7 +7,7 @@
 //  - Al reconectar con cambios sin enviar, se fusiona lo del móvil con lo del broker
 //    (sync.js). Si los dos móviles cambiaron lo mismo, se avisa para que decidas.
 
-import { merge3, eq } from './sync.js';
+import { merge3, eq, eqItem } from './sync.js';
 
 const PREFIX = 'casa/';
 const WAIT_RETAINED_MS = 3000;  // espera a recibir lo del broker antes de enviar lo pendiente
@@ -19,7 +19,8 @@ const DEFAULTS = {
   tareas: [],         // [{id, title, done, date, notes}]
   calendario: [],     // [{id, title, type, start, end, notes}]
   almacen: [],        // [{id, name, qty, desc, roomId, locationId}]
-  mejoras: [],        // [{id, name, desc, section, newSection, done, doneAt, created}]
+  mejoras: [],        // [{id, name, desc, section, newSection, status, blockedReason, done, doneAt}]
+  semanal: [],        // un elemento por día con algo escrito: [{id: 'AAAA-MM-DD', comida, cena}]
   config: { rooms: [] },               // rooms: [{id, name, locations: [{id, name}]}]
   mapa: { plan: null, devices: [] },   // futuro: devices [{id, name, kind, roomId, x, y, topic}]
 };
@@ -64,11 +65,32 @@ export function set(s, value) {
   send(s);
 }
 
+// ---------- Quién usa este móvil (solo en este móvil, no se sincroniza) ----------
+export const getUserName = () => localStorage.getItem('casa:user') || '';
+export const setUserName = (n) => localStorage.setItem('casa:user', n.trim());
+
+// Autoría: en estas secciones cada elemento guarda quién y cuándo lo creó y lo modificó.
+const AUDITED = new Set(['batch', 'compra', 'tareas', 'calendario', 'almacen', 'mejoras']);
+
+function stamp(s, prev, next) {
+  if (!AUDITED.has(s) || !Array.isArray(next)) return next;
+  const who = getUserName() || 'Sin nombre';
+  const at = new Date().toISOString();
+  const before = new Map((prev || []).map((i) => [i.id, i]));
+  return next.map((i) => {
+    const p = before.get(i.id);
+    if (!p) return { ...i, createdBy: i.createdBy || who, createdAt: i.createdAt || at, updatedBy: who, updatedAt: at };
+    if (eqItem(p, i)) return i;
+    return { ...i, updatedBy: who, updatedAt: at };
+  });
+}
+
 // Modifica una copia y la guarda. fn puede mutar la copia o devolver un valor nuevo.
 export function update(s, fn) {
-  const copy = clone(state[s]);
+  const prev = state[s];
+  const copy = clone(prev);
   const result = fn(copy);
-  set(s, result === undefined ? copy : result);
+  set(s, stamp(s, prev, result === undefined ? copy : result));
 }
 
 export function subscribe(s, fn) {

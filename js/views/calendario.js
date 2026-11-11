@@ -1,7 +1,7 @@
 // Calendario general: eventos (visitas, viajes…) + tareas con fecha.
 
 import * as store from '../store.js';
-import { h, icon, sheet, field, empty, sectionTitle, ymd, fmtDate, today } from '../ui.js';
+import { h, icon, sheet, field, empty, sectionTitle, ymd, fmtDate, today, auditLine } from '../ui.js';
 import { taskRow } from './tareas.js';
 
 const TYPES = { visita: 'Visita', viaje: 'Viaje', otro: 'Otro' };
@@ -23,6 +23,7 @@ function eventSheet(id, day) {
   sheet(isNew ? 'Nuevo evento' : 'Evento', [
     field('Título', title), field('Tipo', type), field('Desde', start),
     field('Hasta (opcional)', end), field('Notas', notes),
+    isNew ? null : auditLine(e),
   ], {
     onSave: () => {
       const data = {

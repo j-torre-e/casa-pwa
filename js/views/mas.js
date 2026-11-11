@@ -1,6 +1,7 @@
 import { h, icon } from '../ui.js';
 
 const ITEMS = [
+  ['semanal', 'plate', 'Menú semanal'],
   ['menu', 'utensils', 'Menú Trueba'],
   ['compra', 'cart', 'Lista de la compra'],
   ['almacen', 'box', 'Almacenaje'],
