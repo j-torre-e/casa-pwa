@@ -13,6 +13,7 @@ const API = '/api/menu-trueba';
 const CACHE = 'casa-menu';
 const IMG_KEY = '/menu-trueba.jpg';
 const META_KEY = 'casa:menu';
+const RETRY_MS = 15 * 60 * 1000;
 const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto',
   'septiembre', 'octubre', 'noviembre', 'diciembre'];
 
@@ -32,6 +33,35 @@ export function menuMonth(modified) {
   let m = d.getMonth();
   if (d.getDate() >= 20) { m += 1; if (m > 11) { m = 0; y += 1; } }
   return { y, m };
+}
+
+// Posición de cada casilla del menú, en % de la imagen (plantilla del colegio:
+// 5 columnas lunes–viernes y hasta 5 filas de semanas). Si el colegio cambia el
+// diseño, solo hay que ajustar estos números.
+const GRID = { x0: 1.57, colW: 16.5, cellW: 15.7, y0: 11.1, rowH: 16.45, cellH: 15.8, rows: 5 };
+
+// Casilla del día de hoy (fila, columna) o null si hoy no hay menú en la imagen.
+export function todayCell(mm, now = new Date()) {
+  if (!mm || mm.y !== now.getFullYear() || mm.m !== now.getMonth()) return null;
+  const col = (now.getDay() + 6) % 7;            // lunes = 0
+  if (col > 4) return null;                        // fin de semana
+  // La primera fila es la semana del primer día laborable del mes.
+  const first = new Date(now.getFullYear(), now.getMonth(), 1);
+  while (first.getDay() === 0 || first.getDay() === 6) first.setDate(first.getDate() + 1);
+  const firstMonday = new Date(first.getFullYear(), first.getMonth(), first.getDate() - ((first.getDay() + 6) % 7));
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const row = Math.round((today - firstMonday) / 86400000 / 7 - col / 7);
+  return row >= 0 && row < GRID.rows ? { row, col } : null;
+}
+
+function todayBox(cell) {
+  if (!cell) return null;
+  const left = GRID.x0 + cell.col * GRID.colW;
+  const top = GRID.y0 + cell.row * GRID.rowH;
+  return h('span', {
+    class: 'today-box', 'aria-hidden': 'true',
+    style: `left:${left}%;top:${top}%;width:${GRID.cellW}%;height:${GRID.cellH}%`,
+  });
 }
 
 async function hasCachedImage() {
@@ -55,14 +85,22 @@ export async function autoCheckMenu() {
 
   // Flag: el menú de este mes ya está en el móvil -> no se vuelve a buscar este mes.
   if (meta.menuDescargadoMes === thisMonth && await hasCachedImage()) return false;
-  // Esperando a que el colegio lo publique: un intento al día como máximo.
-  if (meta.checked === todayKey()) return false;
+  // Esperando a que el colegio lo publique: una descarga correcta al día como máximo.
+  if (meta.checked === todayKey() && await hasCachedImage()) return false;
+  // Si el último intento falló, se reintenta como mucho cada 15 minutos.
+  if (meta.lastError && Date.now() - (meta.lastTry || 0) < RETRY_MS) return false;
 
   running = true;
   try {
+    saveMeta({ lastTry: Date.now() });
     const res = await fetch(API, { cache: 'no-store' });
-    saveMeta({ checked: todayKey() });
-    if (!res.ok) return false;
+    if (!res.ok) {
+      let msg = 'error ' + res.status;
+      try { msg = (await res.json()).error || msg; } catch { if (res.status === 404) msg = 'la función de Vercel no está desplegada (404)'; }
+      saveMeta({ lastError: msg });
+      window.dispatchEvent(new CustomEvent('menu-updated'));
+      return false;
+    }
     const modified = res.headers.get('X-Menu-Modified') || '';
     const changed = modified !== meta.modified || !(await hasCachedImage());
     if (changed) {
@@ -71,20 +109,22 @@ export async function autoCheckMenu() {
     }
     const mm = menuMonth(modified);
     const got = mm ? monthKey(mm.y, mm.m) : '';
-    saveMeta({ modified, ...(got >= thisMonth ? { menuDescargadoMes: thisMonth } : {}) });
-    if (changed) window.dispatchEvent(new CustomEvent('menu-updated'));
+    saveMeta({ modified, checked: todayKey(), lastError: '', ...(got >= thisMonth ? { menuDescargadoMes: thisMonth } : {}) });
+    window.dispatchEvent(new CustomEvent('menu-updated'));
     return changed;
   } catch {
-    return false;               // sin conexión: se reintenta en la próxima apertura
+    saveMeta({ lastError: '', lastTry: 0 }); // sin conexión: se reintenta en la próxima apertura
+    return false;
   } finally {
     running = false;
   }
 }
 
-function zoomView(src) {
+function zoomView(src, cell) {
   const dlg = h('dialog', { class: 'zoom' },
     h('button', { class: 'icon-btn zoom-close', type: 'button', 'aria-label': 'Cerrar', onclick: () => dlg.close() }, icon('x')),
-    h('div', { class: 'zoom-scroll' }, h('img', { src, alt: 'Menú del mes ampliado' })));
+    h('div', { class: 'zoom-scroll' },
+      h('div', { class: 'zoom-inner' }, h('img', { src, alt: 'Menú del mes ampliado' }), todayBox(cell))));
   dlg.addEventListener('close', () => dlg.remove());
   document.body.append(dlg);
   dlg.showModal();
@@ -116,11 +156,16 @@ export default function render(root) {
     if (!alive) return;
     if (objectUrl) URL.revokeObjectURL(objectUrl);
     objectUrl = url;
+    const meta = loadMeta();
+    const cell = todayCell(meta.modified ? menuMonth(meta.modified) : null);
     frame.replaceChildren(url
-      ? h('button', { class: 'menu-img', type: 'button', onclick: () => zoomView(url), 'aria-label': 'Ampliar menú' },
+      ? h('button', { class: 'menu-img', type: 'button', onclick: () => zoomView(url, cell), 'aria-label': 'Ampliar menú' },
         h('img', { src: url, alt: 'Menú del mes de la Haurreskola' }),
+        todayBox(cell),
         h('span', { class: 'menu-hint' }, 'Toca para ampliar'))
-      : h('p', { class: 'empty' }, 'El menú se descargará solo en cuanto haya conexión.'));
+      : h('p', { class: 'empty' }, loadMeta().lastError
+        ? 'No se pudo descargar el menú: ' + loadMeta().lastError + '. Se reintentará en unos minutos.'
+        : 'El menú se descargará solo en cuanto haya conexión.'));
   }
 
   const onUpdated = () => { paintHeader(); paintImage(); };

@@ -14,6 +14,7 @@ const ASSETS = [
   '/js/views/casa.js', '/js/views/tareas.js', '/js/views/batch.js', '/js/views/calendario.js',
   '/js/views/mas.js', '/js/views/compra.js', '/js/views/almacen.js', '/js/views/ajustes.js',
   '/js/views/mejoras.js', '/js/views/menu.js', '/js/views/semanal.js',
+  '/img/plano-abajo.png', '/img/plano-arriba.jpg',
   '/icons/icon.svg', '/icons/icon-180.png', '/icons/icon-192.png', '/icons/icon-512.png',
 ];
 
